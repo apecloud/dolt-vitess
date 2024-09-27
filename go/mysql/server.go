@@ -55,14 +55,14 @@ const (
 
 var (
 	// Metrics
-	timings    = stats.NewTimings("MysqlServerTimings", "MySQL server timings", "operation")
-	connCount  = stats.NewGauge("MysqlServerConnCount", "Active MySQL server connections")
-	connAccept = stats.NewCounter("MysqlServerConnAccepted", "Connections accepted by MySQL server")
-	connSlow   = stats.NewCounter("MysqlServerConnSlow", "Connections that took more than the configured mysql_slow_connect_warn_threshold to establish")
+	timings    = stats.NewTimings("ServerTimings", "MySQL server timings", "operation")
+	connCount  = stats.NewGauge("ServerConnCount", "Active MySQL server connections")
+	connAccept = stats.NewCounter("ServerConnAccepted", "Connections accepted by MySQL server")
+	connSlow   = stats.NewCounter("ServerConnSlow", "Connections that took more than the configured mysql_slow_connect_warn_threshold to establish")
 
-	connCountByTLSVer = stats.NewGaugesWithSingleLabel("MysqlServerConnCountByTLSVer", "Active MySQL server connections by TLS version", "tls")
-	connCountPerUser  = stats.NewGaugesWithSingleLabel("MysqlServerConnCountPerUser", "Active MySQL server connections per user", "count")
-	_                 = stats.NewGaugeFunc("MysqlServerConnCountUnauthenticated", "Active MySQL server connections that haven't authenticated yet", func() int64 {
+	connCountByTLSVer = stats.NewGaugesWithSingleLabel("ServerConnCountByTLSVer", "Active MySQL server connections by TLS version", "tls")
+	connCountPerUser  = stats.NewGaugesWithSingleLabel("ServerConnCountPerUser", "Active MySQL server connections per user", "count")
+	_                 = stats.NewGaugeFunc("ServerConnCountUnauthenticated", "Active MySQL server connections that haven't authenticated yet", func() int64 {
 		totalUsers := int64(0)
 		for _, v := range connCountPerUser.Counts() {
 			totalUsers += v
