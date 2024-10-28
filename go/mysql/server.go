@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/dolthub/vitess/go/netutil"
@@ -222,7 +223,7 @@ type Listener struct {
 	// The following parameters are changed by the Accept routine.
 
 	// Incrementing ID for connection id.
-	connectionID uint32
+	ConnectionID atomic.Uint32
 
 	// Read timeout on a given connection
 	connReadTimeout time.Duration
@@ -296,7 +297,6 @@ func NewListenerWithConfig(cfg ListenerConfig) (*Listener, error) {
 		handler:                  cfg.Handler,
 		listener:                 l,
 		ServerVersion:            DefaultServerVersion,
-		connectionID:             1,
 		connReadTimeout:          cfg.ConnReadTimeout,
 		connWriteTimeout:         cfg.ConnWriteTimeout,
 		connReadBufferSize:       cfg.ConnReadBufferSize,
@@ -321,8 +321,7 @@ func (l *Listener) Accept() {
 
 		acceptTime := time.Now()
 
-		connectionID := l.connectionID
-		l.connectionID++
+		connectionID := l.ConnectionID.Add(1)
 
 		for l.maxConns > 0 && uint64(connCount.Get()) >= l.maxConns {
 			// TODO: make this behavior configurable (wait v. reject)
@@ -382,7 +381,7 @@ func (l *Listener) handle(ctx context.Context, conn net.Conn, connectionID uint3
 		// Don't log EOF errors. They cause too much spam, same as main read loop.
 		if err != io.EOF {
 			l.handleConnectionWarning(c, fmt.Sprintf(
-				"Cannot read client handshake response from %s: %v, " +
+				"Cannot read client handshake response from %s: %v, "+
 					"it may not be a valid MySQL client", c, err))
 		}
 		return
@@ -576,7 +575,6 @@ func (l *Listener) handleConnectionWarning(c *Conn, reason string) {
 		log.Errorf("unable to report connection aborted to handler: %s", err)
 	}
 }
-
 
 // Close stops the listener, which prevents accept of any new connections. Existing connections won't be closed.
 func (l *Listener) Close() {
