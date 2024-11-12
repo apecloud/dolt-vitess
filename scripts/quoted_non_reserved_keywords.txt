@@ -384,6 +384,8 @@
 "source_log_pos",
 "source_password",
 "source_port",
+"source_log_file",
+"source_log_pos",
 "source_public_key_path",
 "source_retry_count",
 "source_ssl",

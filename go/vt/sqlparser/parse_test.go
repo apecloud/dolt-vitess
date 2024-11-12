@@ -157,8 +157,8 @@ var (
 			output: "change replication source to source_host = Host, source_auto_position = 0",
 		},
 		{
-			input:  "change replication source to SOURCE_HOST = 'host', SOURCE_PASSWORD='PaSSword', SOURCE_PORT=12345, source_user='root', SOURCE_CONNECT_RETRY=60, SOURCE_RETRY_COUNT=3",
-			output: "change replication source to source_host = host, source_password = PaSSword, source_port = 12345, source_user = root, source_connect_retry = 60, source_retry_count = 3",
+			input:  "change replication source to SOURCE_HOST = 'host', SOURCE_PASSWORD='PaSSword', SOURCE_PORT=12345, source_user='root', SOURCE_LOG_FILE='binlog.000001', SOURCE_LOG_POS=12345, SOURCE_CONNECT_RETRY=60, SOURCE_RETRY_COUNT=3",
+			output: "change replication source to source_host = host, source_password = PaSSword, source_port = 12345, source_user = root, source_log_file = binlog.000001, source_log_pos = 12345, source_connect_retry = 60, source_retry_count = 3",
 		},
 		{
 			input:  "change replication filter REPLICATE_DO_TABLE=(table1)",
@@ -4260,7 +4260,7 @@ var (
 			output: "set global validate_password.length = 1",
 		},
 		{
-			input:  "set @@session.validate_password.length = 1",
+			input: "set @@session.validate_password.length = 1",
 		},
 	}
 

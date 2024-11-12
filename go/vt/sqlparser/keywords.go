@@ -564,6 +564,8 @@ var keywords = map[string]int{
 	"source_host":                   SOURCE_HOST,
 	"source_password":               SOURCE_PASSWORD,
 	"source_port":                   SOURCE_PORT,
+	"source_log_file":               SOURCE_LOG_FILE,
+	"source_log_pos":                SOURCE_LOG_POS,
 	"source_retry_count":            SOURCE_RETRY_COUNT,
 	"source_user":                   SOURCE_USER,
 	"spatial":                       SPATIAL,
