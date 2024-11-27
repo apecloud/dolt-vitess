@@ -201,7 +201,7 @@ func tryCastStatement(v interface{}) Statement {
 %token <bytes> REPLICATE_DO_TABLE REPLICATE_IGNORE_TABLE
 
 // Transaction Tokens
-%token <bytes> BEGIN START TRANSACTION COMMIT ROLLBACK SAVEPOINT WORK RELEASE CHAIN
+%token <bytes> BEGIN START TRANSACTION COMMIT ROLLBACK SAVEPOINT WORK RELEASE CHAIN CONSISTENT SNAPSHOT
 
 // Type Tokens
 %token <bytes> BIT TINYINT SMALLINT MEDIUMINT INT INTEGER BIGINT INTNUM SERIAL INT1 INT2 INT3 INT4 INT8
@@ -248,10 +248,24 @@ func tryCastStatement(v interface{}) Statement {
 %token <bytes> DUAL JSON_TABLE PATH
 
 // Table options
-%token <bytes> AVG_ROW_LENGTH CHECKSUM TABLE_CHECKSUM COMPRESSION DIRECTORY DELAY_KEY_WRITE ENGINE_ATTRIBUTE INSERT_METHOD MAX_ROWS
-%token <bytes> MIN_ROWS PACK_KEYS ROW_FORMAT SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE STATS_AUTO_RECALC STATS_PERSISTENT
-%token <bytes> STATS_SAMPLE_PAGES STORAGE DISK MEMORY DYNAMIC COMPRESSED REDUNDANT
-%token <bytes> COMPACT LIST HASH PARTITIONS SUBPARTITION SUBPARTITIONS
+%token <bytes> AVG_ROW_LENGTH
+%token <bytes> CHECKSUM COMPACT COMPRESSED COMPRESSION
+%token <bytes> DISK DIRECTORY DELAY_KEY_WRITE DYNAMIC
+%token <bytes> ENGINE_ATTRIBUTE ENCRYPTED ENCRYPTION_KEY_ID
+%token <bytes> HASH
+%token <bytes> INSERT_METHOD ITEF_QUOTES
+%token <bytes> LIST
+%token <bytes> MIN_ROWS MAX_ROWS
+%token <bytes> PACK_KEYS
+%token <bytes> MEMORY
+%token <bytes> PAGE_CHECKSUM PAGE_COMPRESSED PAGE_COMPRESSION_LEVEL PARTITIONS
+%token <bytes> REDUNDANT
+%token <bytes> ROW_FORMAT
+%token <bytes> SECONDARY_ENGINE SECONDARY_ENGINE_ATTRIBUTE STATS_AUTO_RECALC STATS_PERSISTENT STATS_SAMPLE_PAGES STORAGE
+%token <bytes> SUBPARTITION SUBPARTITIONS
+%token <bytes> TABLE_CHECKSUM TRANSACTIONAL
+%token <bytes> VERSIONING
+%token <bytes> YES
 
 // Prepared statements
 %token <bytes> PREPARE DEALLOCATE
@@ -332,7 +346,7 @@ func tryCastStatement(v interface{}) Statement {
 %type <val> analyze_statement analyze_opt show_statement use_statement prepare_statement execute_statement deallocate_statement
 %type <val> describe_statement explain_statement explainable_statement
 %type <val> begin_statement commit_statement rollback_statement start_transaction_statement load_statement
-%type <bytes> work_opt no_opt chain_opt release_opt index_name_opt no_first_last
+%type <bytes> work_opt no_opt chain_opt release_opt index_name_opt no_first_last yes_no
 %type <val> comment_opt comment_list
 %type <val> distinct_opt union_op intersect_op except_op insert_or_replace
 %type <val> match_option format_opt
@@ -774,17 +788,20 @@ with_select:
   }
 | WITH with_clause select_or_set_op
   {
-    $3.(SelectStatement).SetWith($2.(*With))
-    $$ = $3.(SelectStatement)
+    with := $2.(*With)
+    selectStatement := $3.(SelectStatement)
+    handleCTEAuth(selectStatement, with)
+    selectStatement.SetWith(with)
+    $$ = selectStatement
   }
 
 with_clause:
   RECURSIVE cte_list
   {
-    $$ = &With{Ctes: $2.(TableExprs), Recursive: true}
+    $$ = &With{Ctes: $2.([]*CommonTableExpr), Recursive: true}
   }
 | cte_list {
-    $$ = &With{Ctes: $1.(TableExprs), Recursive: false}
+    $$ = &With{Ctes: $1.([]*CommonTableExpr), Recursive: false}
 }
 
 base_select_no_cte:
@@ -866,11 +883,11 @@ with_clause_opt:
 cte_list:
   common_table_expression
   {
-    $$ = TableExprs{$1.(TableExpr)}
+    $$ = []*CommonTableExpr{$1.(*CommonTableExpr)}
   }
 | cte_list ',' common_table_expression
   {
-    $$ = append($1.(TableExprs), $3.(TableExpr))
+    $$ = append($1.([]*CommonTableExpr), $3.(*CommonTableExpr))
   }
 
 common_table_expression:
@@ -906,7 +923,9 @@ insert_statement:
     }
     ins.Partitions = $6.(Partitions)
     ins.OnDup = OnDup($8.(AssignmentExprs))
-    ins.With = $1.(*With)
+    with := $1.(*With)
+    handleCTEAuth(ins, with)
+    ins.With = with
     $$ = ins
   }
 | with_clause_opt insert_or_replace comment_opt ignore_opt into_table_name opt_partition_clause insert_data_select on_dup_opt
@@ -929,7 +948,9 @@ insert_statement:
     }
     ins.Partitions = $6.(Partitions)
     ins.OnDup = OnDup($8.(AssignmentExprs))
-    ins.With = $1.(*With)
+    with := $1.(*With)
+    handleCTEAuth(ins, with)
+    ins.With = with
     $$ = ins
   }
 | with_clause_opt insert_or_replace comment_opt ignore_opt into_table_name opt_partition_clause SET assignment_list on_dup_opt
@@ -945,7 +966,7 @@ insert_statement:
     if $2.(string) == ReplaceStr {
       authType = AuthType_REPLACE
     }
-    $$ = &Insert{
+    ins := &Insert{
 	Action: $2.(string),
 	Comments: Comments($3.(Comments)),
 	Ignore: $4.(string),
@@ -954,13 +975,16 @@ insert_statement:
 	Columns: cols,
 	Rows: &AliasedValues{Values: Values{vals}},
 	OnDup: OnDup($9.(AssignmentExprs)),
-	With: $1.(*With),
 	Auth: AuthInformation{
 	  AuthType: authType,
 	  TargetType: AuthTargetType_SingleTableIdentifier,
 	  TargetNames: []string{tableName.DbQualifier.String(), tableName.Name.String()},
 	},
     }
+    with := $1.(*With)
+    handleCTEAuth(ins, with)
+    ins.With = with
+    $$ = ins
   }
 
 insert_or_replace:
@@ -976,7 +1000,7 @@ insert_or_replace:
 update_statement:
   with_clause_opt UPDATE comment_opt ignore_opt table_references SET assignment_list where_expression_opt order_by_opt limit_opt
   {
-    $$ = &Update{
+    update := &Update{
 	Comments: Comments($3.(Comments)),
 	Ignore: $4.(string),
 	TableExprs: SetAuthType($5.(TableExprs), AuthType_UPDATE, true).(TableExprs),
@@ -984,15 +1008,18 @@ update_statement:
 	Where: NewWhere(WhereStr, tryCastExpr($8)),
 	OrderBy: $9.(OrderBy),
 	Limit: $10.(*Limit),
-	With: $1.(*With),
     }
+    with := $1.(*With)
+    handleCTEAuth(update, with)
+    update.With = with
+    $$ = update
   }
 
 delete_statement:
   with_clause_opt DELETE comment_opt FROM table_name opt_partition_clause where_expression_opt order_by_opt limit_opt
   {
     tableName := $5.(TableName)
-    $$ = &Delete{
+    delete := &Delete{
 	Comments: Comments($3.(Comments)),
 	TableExprs: TableExprs{&AliasedTableExpr{
 	  Expr: tableName,
@@ -1006,28 +1033,37 @@ delete_statement:
 	Where: NewWhere(WhereStr, tryCastExpr($7)),
 	OrderBy: $8.(OrderBy),
 	Limit: $9.(*Limit),
-	With: $1.(*With),
     }
+    with := $1.(*With)
+    handleCTEAuth(delete, with)
+    delete.With = with
+    $$ = delete
   }
 | with_clause_opt DELETE comment_opt FROM table_name_list USING table_references where_expression_opt
   {
-    $$ = &Delete{
+    delete := &Delete{
 	Comments: Comments($3.(Comments)),
 	Targets: $5.(TableNames),
 	TableExprs: SetAuthType($7.(TableExprs), AuthType_DELETE, true).(TableExprs),
 	Where: NewWhere(WhereStr, tryCastExpr($8)),
-	With: $1.(*With),
     }
+    with := $1.(*With)
+    handleCTEAuth(delete, with)
+    delete.With = with
+    $$ = delete
   }
 | with_clause_opt DELETE comment_opt table_name_list from_or_using table_references where_expression_opt
   {
-    $$ = &Delete{
+    delete := &Delete{
 	Comments: Comments($3.(Comments)),
 	Targets: $4.(TableNames),
 	TableExprs: SetAuthType($6.(TableExprs), AuthType_DELETE, true).(TableExprs),
 	Where: NewWhere(WhereStr, tryCastExpr($7)),
-	With: $1.(*With),
     }
+    with := $1.(*With)
+    handleCTEAuth(delete, with)
+    delete.With = with
+    $$ = delete
   }
 | with_clause_opt DELETE comment_opt delete_table_list from_or_using table_references where_expression_opt
   {
@@ -1037,13 +1073,16 @@ delete_statement:
     	authTargetNames[2*i] = tableName.DbQualifier.String()
     	authTargetNames[2*i+1] = tableName.Name.String()
     }
-    $$ = &Delete{
+    delete := &Delete{
 	Comments: Comments($3.(Comments)),
 	Targets: tableNames,
 	TableExprs: SetAuthType($6.(TableExprs), AuthType_DELETE, true).(TableExprs),
 	Where: NewWhere(WhereStr, tryCastExpr($7)),
-	With: $1.(*With),
     }
+    with := $1.(*With)
+    handleCTEAuth(delete, with)
+    delete.With = with
+    $$ = delete
   }
 
 from_or_using:
@@ -2461,11 +2500,23 @@ authentication:
   {
     $$ = &Authentication{Plugin: string($3)}
   }
+| IDENTIFIED WITH STRING
+  {
+    $$ = &Authentication{Plugin: string($3)}
+  }
 | IDENTIFIED WITH ID BY RANDOM PASSWORD
   {
     $$ = &Authentication{Plugin: string($3), RandomPassword: true}
   }
+| IDENTIFIED WITH STRING BY RANDOM PASSWORD
+  {
+    $$ = &Authentication{Plugin: string($3), RandomPassword: true}
+  }
 | IDENTIFIED WITH ID BY STRING
+  {
+    $$ = &Authentication{Plugin: string($3), Password: string($5)}
+  }
+| IDENTIFIED WITH STRING BY STRING
   {
     $$ = &Authentication{Plugin: string($3), Password: string($5)}
   }
@@ -4744,11 +4795,23 @@ table_option:
   {
     $$ = &TableOption{Name: string($1) + " "  + string($2), Value: string($4)}
   }
+| ITEF_QUOTES equal_opt yes_no
+  {
+    $$ = &TableOption{Name: string($1), Value: string($3)}
+  }
 | DELAY_KEY_WRITE equal_opt coericble_to_integral
   {
     $$ = &TableOption{Name: string($1), Value: string($3)}
   }
 | ENCRYPTION equal_opt STRING
+  {
+    $$ = &TableOption{Name: string($1), Value: string($3)}
+  }
+| ENCRYPTED equal_opt yes_no
+  {
+    $$ = &TableOption{Name: string($1), Value: string($3)}
+  }
+| ENCRYPTION_KEY_ID equal_opt coericble_to_integral
   {
     $$ = &TableOption{Name: string($1), Value: string($3)}
   }
@@ -4780,6 +4843,18 @@ table_option:
   {
     $$ = &TableOption{Name: string($1), Value: string($3)}
   }
+| PAGE_CHECKSUM equal_opt coericble_to_integral
+  {
+    $$ = &TableOption{Name: string($1), Value: string($3)}
+  }
+| PAGE_COMPRESSED equal_opt coericble_to_integral
+  {
+    $$ = &TableOption{Name: string($1), Value: string($3)}
+  }
+| PAGE_COMPRESSION_LEVEL equal_opt coericble_to_integral
+  {
+    $$ = &TableOption{Name: string($1), Value: string($3)}
+  }
 | PASSWORD equal_opt STRING
   {
     $$ = &TableOption{Name: string($1), Value: string($3)}
@@ -4805,6 +4880,10 @@ table_option:
     $$ = &TableOption{Name: string($1), Value: string($3)}
   }
 | SECONDARY_ENGINE_ATTRIBUTE equal_opt STRING
+  {
+    $$ = &TableOption{Name: string($1), Value: string($3)}
+  }
+| SEQUENCE equal_opt coericble_to_integral
   {
     $$ = &TableOption{Name: string($1), Value: string($3)}
   }
@@ -4844,9 +4923,17 @@ table_option:
   {
     $$ = &TableOption{Name: string($1), Value: string($2) + " "  + string($3) + " "  + string($4)}
   }
+| TRANSACTIONAL equal_opt coericble_to_integral
+  {
+    $$ = &TableOption{Name: string($1), Value: string($3)}
+  }
 | UNION equal_opt openb any_identifier_list closeb
   {
     $$ = &TableOption{Name: string($1), Value: "(" + $4.(string) + ")"}
+  }
+| WITH SYSTEM VERSIONING
+  {
+    $$ = &TableOption{Name: string($1) + " " + string($2) + " " + string($3)}
   }
 
 no_first_last:
@@ -4859,6 +4946,16 @@ no_first_last:
     $$ = $1
   }
 | LAST
+  {
+    $$ = $1
+  }
+
+yes_no:
+  YES
+  {
+    $$ = $1
+  }
+| NO
   {
     $$ = $1
   }
@@ -5887,11 +5984,23 @@ alter_table_options:
   {
     $$ = &DDL{Action: AlterStr}
   }
+| ITEF_QUOTES equal_opt yes_no
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
 | DELAY_KEY_WRITE equal_opt coericble_to_integral
   {
     $$ = &DDL{Action: AlterStr}
   }
 | ENCRYPTION equal_opt STRING
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
+| ENCRYPTED equal_opt yes_no
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
+| ENCRYPTION_KEY_ID equal_opt coericble_to_integral
   {
     $$ = &DDL{Action: AlterStr}
   }
@@ -5923,6 +6032,18 @@ alter_table_options:
   {
     $$ = &DDL{Action: AlterStr}
   }
+| PAGE_CHECKSUM equal_opt coericble_to_integral
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
+| PAGE_COMPRESSED equal_opt coericble_to_integral
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
+| PAGE_COMPRESSION_LEVEL equal_opt coericble_to_integral
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
 | PASSWORD equal_opt STRING
   {
     $$ = &DDL{Action: AlterStr}
@@ -5944,6 +6065,10 @@ alter_table_options:
     $$ = &DDL{Action: AlterStr}
   }
 | SECONDARY_ENGINE_ATTRIBUTE equal_opt STRING
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
+| SEQUENCE equal_opt coericble_to_integral
   {
     $$ = &DDL{Action: AlterStr}
   }
@@ -5983,7 +6108,15 @@ alter_table_options:
   {
     $$ = &DDL{Action: AlterStr}
   }
+| TRANSACTIONAL equal_opt coericble_to_integral
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
 | UNION equal_opt openb any_identifier_list closeb
+  {
+    $$ = &DDL{Action: AlterStr}
+  }
+| WITH SYSTEM VERSIONING
   {
     $$ = &DDL{Action: AlterStr}
   }
@@ -6888,6 +7021,16 @@ show_statement:
       },
     }
   }
+| SHOW SLAVE STATUS
+  {
+    $$ = &Show{
+      Type: string($2) + " " + string($3),
+      Auth: AuthInformation{
+        AuthType: AuthType_REPLICATION_CLIENT,
+        TargetType: AuthTargetType_Global,
+      },
+    }
+  }
 | SHOW FUNCTION STATUS like_or_where_opt
   {
     $$ = &Show{
@@ -7316,6 +7459,10 @@ start_transaction_statement:
  | START TRANSACTION READ ONLY
   {
     $$ = &Begin{TransactionCharacteristic: TxReadOnly}
+  }
+| START TRANSACTION WITH CONSISTENT SNAPSHOT
+  {
+    $$ = &Begin{}
   }
 
 no_opt:
@@ -10107,6 +10254,10 @@ charset_value:
   {
     $$ = &Default{}
   }
+| BINARY
+  {
+    $$ = NewStrVal($1)
+  }
 
 for_from:
   FOR
@@ -11032,6 +11183,7 @@ non_reserved_keyword:
 | CONNECTION
 | COMPLETION
 | COMPONENT
+| CONSISTENT
 | CONSTRAINT_CATALOG
 | CONSTRAINT_NAME
 | CONSTRAINT_SCHEMA
@@ -11221,6 +11373,7 @@ non_reserved_keyword:
 | SKIP
 | SLAVE
 | SLOW
+| SNAPSHOT
 | SOURCE
 | SOURCE_CONNECT_RETRY
 | SOURCE_HOST
