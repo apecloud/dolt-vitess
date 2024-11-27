@@ -149,6 +149,9 @@ var (
 			input: "show replica status",
 		},
 		{
+			input: "show slave status",
+		},
+		{
 			input:  "change replication source to SOURCE_HOST = 'Host'",
 			output: "change replication source to source_host = Host",
 		},
@@ -1585,13 +1588,24 @@ var (
 		{
 			input:  "set names utf8 collate foo",
 			output: "set names 'utf8'",
-		}, {
+		},
+		{
 			input:  "set names utf8 collate 'foo'",
 			output: "set names 'utf8'",
-		}, {
+		},
+		{
+			input:  "set names binary",
+			output: "set names 'binary'",
+		},
+		{
+			input:  "set names binary collate 'foo'",
+			output: "set names 'binary'",
+		},
+		{
 			input:  "set character set utf8",
 			output: "set charset 'utf8'",
-		}, {
+		},
+		{
 			input:  "set character set 'utf8'",
 			output: "set charset 'utf8'",
 		}, {
@@ -2778,6 +2792,9 @@ var (
 			input:  "start transaction read write",
 			output: "start transaction read write",
 		}, {
+			input:  "start transaction with consistent snapshot",
+			output: "start transaction",
+		}, {
 			input: "commit",
 		}, {
 			input:  "commit work",
@@ -2992,6 +3009,15 @@ var (
 		}, {
 			input:  "CREATE USER UserName@localhost IDENTIFIED WITH some_plugin INITIAL AUTHENTICATION IDENTIFIED BY RANDOM PASSWORD",
 			output: "create user `UserName`@`localhost` identified with some_plugin initial authentication identified by random password",
+		}, {
+			input:  "CREATE USER UserName@localhost IDENTIFIED WITH 'some_plugin'",
+			output: "create user `UserName`@`localhost` identified with some_plugin",
+		}, {
+			input:  "CREATE USER UserName@localhost IDENTIFIED WITH 'some_plugin' BY random password",
+			output: "create user `UserName`@`localhost` identified with some_plugin by random password",
+		}, {
+			input:  "CREATE USER UserName@localhost IDENTIFIED WITH 'some_plugin' BY 'password'",
+			output: "create user `UserName`@`localhost` identified with some_plugin by 'password'",
 		}, {
 			input:  "CREATE USER UserName1@localhost IDENTIFIED BY 'some_auth1', UserName2@localhost IDENTIFIED BY 'some_auth2' DEFAULT ROLE role1, role2@localhost",
 			output: "create user `UserName1`@`localhost` identified by 'some_auth1', `UserName2`@`localhost` identified by 'some_auth2' default role `role1`@`%`, `role2`@`localhost`",
@@ -4140,10 +4166,42 @@ var (
 			output: "alter table t",
 		},
 		{
-			input:  "alter table t union = (a, b, c)",
+			input:  "alter table t itef_quotes=yes",
+			output: "alter table t",
+		},
+		{
+			input:  "alter table t encrypted=yes",
+			output: "alter table t",
+		},
+		{
+			input:  "alter table t encryption_key_id=123",
+			output: "alter table t",
+		},
+		{
+			input:  "alter table t page_checksum=1",
+			output: "alter table t",
+		},
+		{
+			input:  "alter table t page_compressed=1",
+			output: "alter table t",
+		},
+		{
+			input:  "alter table t page_compression_level=9",
+			output: "alter table t",
+		},
+		{
+			input:  "alter table t transactional=1",
+			output: "alter table t",
+		},
+		{
+			input:  "alter table t with system versioning",
 			output: "alter table t",
 		},
 
+		{
+			input:  "alter table t union = (a, b, c)",
+			output: "alter table t",
+		},
 		{
 			input: "alter table t modify col varchar(20) not null, algorithm = inplace, lock = none;",
 			output: "alter table t modify column col (\n" +
@@ -4206,6 +4264,60 @@ var (
 				"\ti int\n" +
 				") insert_method last",
 		},
+		{
+			input: "create table t (i int) itef_quotes=yes",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") itef_quotes yes",
+		},
+		{
+			input: "create table t (i int) encrypted=yes",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") encrypted yes",
+		},
+		{
+			input: "create table t (i int) encryption_key_id=123",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") encryption_key_id 123",
+		},
+		{
+			input: "create table t (i int) page_checksum=0",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") page_checksum 0",
+		},
+		{
+			input: "create table t (i int) page_compressed=0",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") page_compressed 0",
+		},
+		{
+			input: "create table t (i int) page_compression_level=0",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") page_compression_level 0",
+		},
+		{
+			input: "create table t (i int) sequence=0",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") sequence 0",
+		},
+		{
+			input: "create table t (i int) transactional=0",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") transactional 0",
+		},
+		{
+			input: "create table t (i int) with system versioning",
+			output: "create table t (\n" +
+				"\ti int\n" +
+				") with system versioning ",
+		},
 
 		// Date, Time, and Timestamp literals
 		{
@@ -4260,7 +4372,7 @@ var (
 			output: "set global validate_password.length = 1",
 		},
 		{
-			input:  "set @@session.validate_password.length = 1",
+			input: "set @@session.validate_password.length = 1",
 		},
 	}
 
