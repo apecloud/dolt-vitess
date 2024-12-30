@@ -198,7 +198,7 @@ func tryCastStatement(v interface{}) Statement {
 // Replication Tokens
 %token <bytes> REPLICA REPLICAS SOURCE STOP RESET FILTER LOG MASTER
 %token <bytes> SOURCE_HOST SOURCE_USER SOURCE_PASSWORD SOURCE_PORT SOURCE_LOG_FILE SOURCE_LOG_POS SOURCE_CONNECT_RETRY SOURCE_RETRY_COUNT SOURCE_AUTO_POSITION
-%token <bytes> REPLICATE_DO_TABLE REPLICATE_IGNORE_TABLE
+%token <bytes> REPLICATE_DO_DB REPLICATE_IGNORE_DB REPLICATE_DO_TABLE REPLICATE_IGNORE_TABLE
 %token <bytes> IO_THREAD SQL_THREAD
 
 // Transaction Tokens
@@ -4408,7 +4408,15 @@ replication_filter_option_list:
  }
 
 replication_filter_option:
-  REPLICATE_DO_TABLE '=' '(' table_name_list ')'
+  REPLICATE_DO_DB '=' '(' table_name_list ')'
+  {
+    $$ = &ReplicationOption{Name: string($1), Value: $4.(TableNames)}
+  }
+| REPLICATE_IGNORE_DB '=' '(' table_name_list ')'
+  {
+    $$ = &ReplicationOption{Name: string($1), Value: $4.(TableNames)}
+  }
+| REPLICATE_DO_TABLE '=' '(' table_name_list ')'
   {
     $$ = &ReplicationOption{Name: string($1), Value: $4.(TableNames)}
   }
@@ -11365,6 +11373,8 @@ non_reserved_keyword:
 | REPEATABLE
 | REPLICA
 | REPLICAS
+| REPLICATE_DO_DB
+| REPLICATE_IGNORE_DB
 | REPLICATE_DO_TABLE
 | REPLICATE_IGNORE_TABLE
 | REPLICATION
